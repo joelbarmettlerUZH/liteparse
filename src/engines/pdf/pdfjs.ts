@@ -1,6 +1,6 @@
-import fs from 'fs/promises';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   PdfEngine,
   PdfDocument,
@@ -149,8 +149,25 @@ export class PdfJsEngine implements PdfEngine {
           rotation += 360;
         }
 
+        // Decode buggy font markers from PDF.js
+        // Format: :->|>_<charCode>_<fontChar>_<|<-:
+        let decodedStr = item.str.replace(
+          /:->|>_(\d+)_\d+_<|<-:/g,
+          (_: string, charCode: string) => String.fromCharCode(parseInt(charCode))
+        );
+
+        // Handle pipe-separated characters: " |a|  |r|  |X| " -> "arX"
+        // Some PDFs encode text with characters separated by pipes and spaces
+        if (decodedStr.includes('|')) {
+          const pipePattern = /\s*\|([^|])\|\s*/g;
+          const matches = [...decodedStr.matchAll(pipePattern)];
+          if (matches.length > 0) {
+            decodedStr = matches.map(m => m[1]).join('');
+          }
+        }
+
         return {
-          str: item.str,
+          str: decodedStr,
           x: left,
           y: top,
           width,
