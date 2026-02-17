@@ -57,6 +57,59 @@ brew tap yourusername/liteparse
 brew install liteparse
 ```
 
+#### Option 4: Instal from Source
+
+You can clone the repo and install the CLI globally from source:
+
+```
+git clone https://github.com/run-llama/liteparse.git
+cd liteparse
+npm run build
+npm pack
+npm install -g ./liteparse-*.tgz
+```
+
+## Usage
+
+### Parse PDF Files
+
+You can run tests without building the binary using the CLI:
+
+```bash
+# Basic parsing
+liteparse parse document.pdf
+
+# Parse with specific format
+liteparse parse document.pdf --format json -o output.md
+
+# Parse specific pages
+liteparse parse document.pdf --target-pages "1-5,10,15-20"
+
+# Parse without OCR
+liteparse parse document.pdf --no-ocr
+
+# Use custom config file
+liteparse parse document.pdf --config config.json
+```
+
+### Generate Screenshots
+
+Screenshots are essential for LLM agents to extract visual information that text alone cannot capture.
+
+```bash
+# Screenshot all pages
+liteparse screenshot document.pdf -o ./screenshots
+
+# Screenshot specific pages
+liteparse screenshot document.pdf --pages "1,3,5" -o ./screenshots
+
+# Custom output directory and DPI
+liteparse screenshot document.pdf -o ./images --dpi 300 -o ./screenshots
+
+# Screenshot page range
+liteparse screenshot document.pdf --pages "1-10" -o ./screenshots
+```
+
 ### Library Usage
 
 Install as a dependency in your project:
@@ -73,75 +126,6 @@ import { LiteParse } from 'liteparse';
 const parser = new LiteParse({ ocrEnabled: true });
 const result = await parser.parse('document.pdf');
 console.log(result.text);
-```
-
-### Build from Source
-
-If you want to contribute or build from source:
-
-#### Prerequisites
-
-- Node.js 18.0.0 or higher
-- npm or pnpm package manager
-
-#### Steps
-
-```bash
-# Clone the repository
-git clone https://github.com/run-llama/liteparse.git
-cd liteparse
-
-# Install dependencies
-npm install
-# or
-pnpm install
-
-# Build TypeScript
-npm run build
-
-# Use the CLI locally
-node dist/src/index.js parse document.pdf
-```
-
-## Development Usage
-
-### Parse PDF Files
-
-You can run tests without building the binary using the CLI:
-
-```bash
-# Basic parsing
-pnpm parse document.pdf
-
-# Parse with specific format
-pnpm parse document.pdf --format json -o output.md
-
-# Parse specific pages
-pnpm parse document.pdf --target-pages "1-5,10,15-20"
-
-# Parse without OCR
-pnpm parse document.pdf --no-ocr
-
-# Use custom config file
-pnpm parse document.pdf --config config.json
-```
-
-### Generate Screenshots
-
-Screenshots are essential for LLM agents to extract visual information that text alone cannot capture.
-
-```bash
-# Screenshot all pages
-pnpm screenshot document.pdf
-
-# Screenshot specific pages
-pnpm screenshot document.pdf --pages "1,3,5"
-
-# Custom output directory and DPI
-pnpm screenshot document.pdf -o ./images --dpi 300
-
-# Screenshot page range
-pnpm screenshot document.pdf --pages "1-10"
 ```
 
 ### CLI Options
@@ -183,8 +167,6 @@ Options:
 
 ## OCR Setup
 
-**OCR works out of the box!** The default Tesseract.js engine runs in-process with zero setup.
-
 ### Default: Tesseract.js
 
 ```bash
@@ -202,37 +184,10 @@ pnpm parse document.pdf --no-ocr
 
 For higher accuracy or better performance, you can use an HTTP OCR server. We provide ready-to-use example wrappers for popular OCR engines:
 
-#### EasyOCR
+- [EasyOCR](ocr/easyocr/README.md)
+- [PaddleOCR](ocr/paddleocr/README.md)
 
-**Setup:**
-```bash
-cd ocr/easyocr
-docker build -t liteparse-easyocr .
-docker run -p 8828:8828 liteparse-easyocr
-```
-
-**Usage:**
-```bash
-pnpm parse document.pdf --ocr-server-url http://localhost:8828/ocr
-```
-
-#### PaddleOCR
-
-**Setup:**
-```bash
-cd ocr/paddleocr
-docker build -t liteparse-paddleocr .
-docker run -p 8829:8829 liteparse-paddleocr
-```
-
-**Usage:**
-```bash
-pnpm parse document.pdf --ocr-server-url http://localhost:8829/ocr --ocr-language zh
-```
-
-### Custom OCR Server
-
-You can integrate **any OCR service** by implementing the simple LiteParse OCR API specification (see `OCR_API_SPEC.md`).
+You can integrate any OCR service by implementing the simple LiteParse OCR API specification (see [`OCR_API_SPEC.md`](OCR_API_SPEC.md)).
 
 The API requires:
 - POST `/ocr` endpoint
@@ -254,7 +209,8 @@ LiteParse supports **automatic conversion** of various document formats to PDF b
 - **PowerPoint**: `.ppt`, `.pptx`, `.pptm`, `.odp`
 - **Spreadsheets**: `.xls`, `.xlsx`, `.xlsm`, `.ods`, `.csv`, `.tsv`
 
-**Setup:**
+Just install the dependency and LiteParse will automatically convert these formats to PDF for parsing:
+
 ```bash
 # macOS
 brew install --cask libreoffice
@@ -263,37 +219,17 @@ brew install --cask libreoffice
 apt-get install libreoffice
 ```
 
-**Usage:**
-```bash
-# Parse Word document
-pnpm parse report.docx -o report.txt
-
-# Parse PowerPoint
-pnpm parse slides.pptx --format json -o slides.json
-
-# Parse Excel spreadsheet
-pnpm parse data.xlsx -o data.txt
-```
-
 #### Images (via ImageMagick)
 - **Formats**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.tiff`, `.webp`, `.svg`
 
-**Setup:**
+Just install ImageMagick and LiteParse will convert images to PDF for parsing (with OCR):
+
 ```bash
 # macOS
 brew install imagemagick
 
 # Ubuntu/Debian
 apt-get install imagemagick
-```
-
-**Usage:**
-```bash
-# Parse image (automatically runs OCR)
-pnpm parse receipt.jpg --ocr-engine tesseract -o receipt.txt
-
-# Parse scanned diagram
-pnpm parse diagram.png --format json -o diagram.json
 ```
 
 ## Configuration
@@ -336,231 +272,22 @@ Use with:
 pnpm parse document.pdf --config liteparse.config.json
 ```
 
-## Programmatic Usage
-
-### Installation
-
-```bash
-npm install liteparse
-# or
-pnpm add liteparse
-```
-
-### Basic Example
-
-```typescript
-import { LiteParse, type LiteParseConfig } from 'liteparse';
-
-// Default configuration: uses built-in Tesseract OCR
-const parser = new LiteParse({
-  outputFormat: 'json',
-  ocrEnabled: true,
-  tableDetection: true,
-});
-
-// Parse a PDF file
-const result = await parser.parse('document.pdf');
-
-// Access parsed text
-console.log(result.text);
-
-// Access structured data
-console.log(result.json);
-
-// Access individual pages
-for (const page of result.pages) {
-  console.log(`Page ${page.page}: ${page.text}`);
-  console.log(`Text items:`, page.textItems);
-  console.log(`Tables:`, page.tables);
-}
-```
-
-### Using HTTP OCR Server
-
-```typescript
-import { LiteParse } from 'liteparse';
-
-// Configure with HTTP OCR server (EasyOCR, PaddleOCR, or custom)
-const parser = new LiteParse({
-  ocrServerUrl: 'http://localhost:8828/ocr',
-  ocrLanguage: 'zh',
-  outputFormat: 'json',
-});
-
-const result = await parser.parse('chinese-document.pdf');
-console.log(result.text);
-```
-
-### Generating Screenshots
-
-```typescript
-import { LiteParse } from 'liteparse';
-import fs from 'fs/promises';
-
-const parser = new LiteParse({ dpi: 300 });
-
-// Generate screenshots for specific pages
-const screenshots = await parser.screenshot('document.pdf', [1, 2, 3]);
-
-// Save screenshots
-for (const screenshot of screenshots) {
-  const filename = `page_${screenshot.pageNum}.png`;
-  await fs.writeFile(filename, screenshot.imageBuffer);
-  console.log(`Saved: ${filename} (${screenshot.width}x${screenshot.height})`);
-}
-
-// Generate screenshots for all pages (omit page numbers)
-const allScreenshots = await parser.screenshot('document.pdf');
-```
-
-### Configuration Options
-
-```typescript
-import { LiteParse, type LiteParseConfig } from 'liteparse';
-
-const config: LiteParseConfig = {
-  // Output format
-  outputFormat: 'json', // 'json' | 'text'
-
-  // OCR configuration
-  ocrEnabled: true,
-  ocrServerUrl: 'http://localhost:8828/ocr', // Optional HTTP server
-  ocrLanguage: 'en', // Language code
-
-  // Parsing options
-  maxPages: 1000,
-  targetPages: '1-10,15', // Specific pages to parse
-  dpi: 150, // Resolution for rendering
-
-  // Feature toggles
-  tableDetection: true,
-  preciseBoundingBox: true,
-  skipDiagonalText: false,
-  preserveVerySmallText: false,
-};
-
-const parser = new LiteParse(config);
-```
-
-### TypeScript Types
-
-```typescript
-import {
-  LiteParse,
-  type LiteParseConfig,
-  type ParseResult,
-  type PageResult,
-  type TextItem,
-  type BoundingBox,
-  type TableItem,
-  type ImageItem,
-} from 'liteparse';
-
-// ParseResult structure
-const result: ParseResult = {
-  text: string,           // Plain text content
-  json: object,           // Structured JSON data
-  pages: PageResult[],    // Per-page results
-};
-
-// PageResult structure
-const page: PageResult = {
-  page: number,           // Page number (1-indexed)
-  width: number,          // Page width in points
-  height: number,         // Page height in points
-  text: string,           // Page text content
-  textItems: TextItem[],  // Individual text items with positions
-  boundingBoxes: BoundingBox[], // Text bounding boxes
-  tables: TableItem[],    // Detected tables
-  images: ImageItem[],    // Embedded images
-};
-```
-
-## Output Formats
-
-### JSON Format
-
-```json
-{
-  "pages": [
-    {
-      "page": 1,
-      "width": 612,
-      "height": 792,
-      "text": "Page text content...",
-      "textItems": [
-        {
-          "text": "Hello",
-          "x": 100,
-          "y": 200,
-          "width": 50,
-          "height": 12,
-          "fontName": "Arial",
-          "fontSize": 12
-        }
-      ],
-      "boundingBoxes": [...],
-      "tables": [...],
-      "images": [...]
-    }
-  ]
-}
-```
-
-### Text Format
-
-Plain text with page separators:
-
-```
---- Page 1 ---
-Page text content...
-
---- Page 2 ---
-More text...
-```
-
-## Architecture
-
-```
-liteparse/
-├── src/
-│   ├── core/              # Configuration and main Parser class
-│   ├── engines/           # PDF and OCR engine abstractions
-│   │   ├── pdf/          # PDF.js engine
-│   │   └── ocr/          # OCR engines (Tesseract, HTTP)
-│   ├── processing/        # Core processing pipeline
-│   │   ├── grid.ts       # Spatial text projection
-│   │   ├── bbox.ts       # Bounding box building
-│   │   └── tables.ts     # Table detection
-│   ├── output/            # Output formatters
-│   └── vendor/            # Bundled PDF.js
-├── cli/                   # Command-line interface
-├── ocr/                   # Example OCR servers
-│   ├── easyocr/          # EasyOCR wrapper server
-│   └── paddleocr/        # PaddleOCR wrapper server
-├── OCR_API_SPEC.md        # Standard OCR API specification
-└── examples/              # Usage examples
-```
-
-The OCR system uses a simple client-server model:
-- **Client**: Single HTTP OCR engine that calls standard API
-- **Server**: Your choice (EasyOCR, PaddleOCR, custom) conforming to API spec
-- **Default**: Built-in Tesseract.js (no server needed)
-
 ## Development
+
+We provide a fairly rich `AGENTS.md`/`CLAUDE.md` that we recommend using to help with development + coding agents.
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Build TypeScript
-pnpm build
+npm run build
 
 # Watch mode
-pnpm dev
+npm run dev
 
 # Test parsing
-pnpm test
+npm test
 ```
 
 ## License
@@ -576,7 +303,3 @@ Built on top of:
 - [EasyOCR](https://github.com/JaidedAI/EasyOCR) - HTTP OCR server (optional)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - HTTP OCR server (optional)
 - [Sharp](https://github.com/lovell/sharp) - Image processing
-
-## Contributing
-
-Contributions welcome! This is Phase 1 of the implementation. See `ROADMAP.md` for planned features.
