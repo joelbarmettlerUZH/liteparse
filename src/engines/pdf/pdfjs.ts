@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { PdfEngine, PdfDocument, PageData, Image, Annotation } from "./interface.js";
+import { PdfEngine, PdfDocument, PageData, Image, Annotation, BoundingBox } from "./interface.js";
 import { TextItem } from "../../core/types.js";
 import { PdfiumRenderer } from "./pdfium-renderer.js";
 
@@ -125,6 +125,57 @@ const BUGGY_FONT_MARKER_REGEX = /:->\|>_(\d+)_\d+_<\|<-:/g;
 const BUGGY_FONT_MARKER_CHECK = ":->|>";
 const PIPE_PATTERN_REGEX = /\s*\|([^|])\|\s*/g;
 
+/**
+ * Detect garbled text from fonts with corrupted ToUnicode mappings.
+ * These fonts often map character codes to random Unicode points from
+ * disparate blocks (e.g., Arabic + Latin Extended together).
+ *
+ * Returns true if the string appears to be garbled font output.
+ */
+function isGarbledFontOutput(str: string): boolean {
+  if (str.length < 3) return false;
+
+  let arabicCount = 0;
+  let latinExtendedCount = 0;
+  let basicLatinLetterCount = 0;
+
+  for (const char of str) {
+    const code = char.charCodeAt(0);
+
+    // Arabic block (0x600-0x6FF) and Arabic Supplement (0x750-0x77F)
+    if ((code >= 0x600 && code <= 0x6ff) || (code >= 0x750 && code <= 0x77f)) {
+      arabicCount++;
+    }
+    // Latin Extended-A (0x100-0x17F) and Latin Extended-B (0x180-0x24F)
+    else if (code >= 0x100 && code <= 0x24f) {
+      latinExtendedCount++;
+    }
+    // Basic Latin letters (a-z, A-Z)
+    else if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) {
+      basicLatinLetterCount++;
+    }
+  }
+
+  // Heuristic: If text contains both Arabic AND Latin Extended characters,
+  // it's almost certainly a garbled font (this combination is extremely rare
+  // in legitimate text). We require at least 2 of each to avoid false positives.
+  if (arabicCount >= 2 && latinExtendedCount >= 2) {
+    return true;
+  }
+
+  // Also flag text that is predominantly Latin Extended with very few basic letters
+  // (legitimate text in Latin-based languages would have mostly basic Latin)
+  const totalChars = str.length;
+  if (
+    latinExtendedCount > totalChars * 0.3 &&
+    basicLatinLetterCount < totalChars * 0.2
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export class PdfJsEngine implements PdfEngine {
   name = "pdfjs";
   private pdfiumRenderer: PdfiumRenderer | null = null;
@@ -168,6 +219,7 @@ export class PdfJsEngine implements PdfEngine {
     const viewportTransform = viewport.transform;
 
     const textItems: TextItem[] = [];
+    const garbledTextRegions: BoundingBox[] = [];
     for (const item of textContent.items) {
       // Skip items with zero dimensions
       if (item.height === 0 || item.width === 0) continue;
@@ -224,6 +276,13 @@ export class PdfJsEngine implements PdfEngine {
         }
       }
 
+      // Skip garbled text from fonts with corrupted ToUnicode mappings
+      // Save the bounding box so OCR can fill in these specific regions
+      if (isGarbledFontOutput(decodedStr)) {
+        garbledTextRegions.push({ x: left, y: top, width, height });
+        continue;
+      }
+
       textItems.push({
         str: decodedStr,
         x: left,
@@ -255,6 +314,7 @@ export class PdfJsEngine implements PdfEngine {
       textItems,
       images,
       annotations,
+      garbledTextRegions: garbledTextRegions.length > 0 ? garbledTextRegions : undefined,
     };
   }
 

@@ -206,69 +206,127 @@ export class LiteParse {
         0
       );
 
-      // Run OCR if text is sparse or if images exist that might contain text
-      if (textLength < 100 || page.images.length > 0) {
-        try {
-          // Render page as image
-          const imageBuffer = await this.pdfEngine.renderPageImage(
-            doc,
-            page.pageNum,
-            this.config.dpi
-          );
+      // Determine if OCR is needed and what mode
+      const hasGarbledRegions = page.garbledTextRegions && page.garbledTextRegions.length > 0;
+      const needsFullOcr = textLength < 100 || page.images.length > 0;
 
-          // Save temporary image file
-          const fs = await import("fs/promises");
-          const path = await import("path");
-          const os = await import("os");
-          const tmpDir = os.tmpdir();
-          const tmpImagePath = path.join(tmpDir, `page_${page.pageNum}_ocr.png`);
-          await fs.writeFile(tmpImagePath, imageBuffer);
+      if (!needsFullOcr && !hasGarbledRegions) {
+        continue;
+      }
 
-          // Run OCR
-          log(`  OCR on page ${page.pageNum}...`);
-          const ocrResults = await this.ocrEngine.recognize(tmpImagePath, {
-            language: this.config.ocrLanguage,
-            correctRotation: true,
-          });
+      try {
+        // Render page as image
+        const imageBuffer = await this.pdfEngine.renderPageImage(
+          doc,
+          page.pageNum,
+          this.config.dpi
+        );
 
-          // Convert OCR results to text items and add to page
-          if (ocrResults.length > 0) {
-            // Collect existing text content for content-based deduplication
-            const existingTextContent = new Set(
-              page.textItems
-                .map((item: { str: string }) => item.str.trim().toLowerCase())
-                .filter((s: string) => s.length > 0)
-            );
+        // Save temporary image file
+        const fs = await import("fs/promises");
+        const path = await import("path");
+        const os = await import("os");
+        const tmpDir = os.tmpdir();
+        const tmpImagePath = path.join(tmpDir, `page_${page.pageNum}_ocr.png`);
+        await fs.writeFile(tmpImagePath, imageBuffer);
 
-            const ocrTextItems: TextItem[] = ocrResults
-              .filter((r) => r.confidence > 0.1) // Filter low confidence
-              .filter((r) => {
-                // Filter out OCR text that already exists in native PDF text
-                const ocrText = r.text.trim().toLowerCase();
-                return ocrText.length > 0 && !existingTextContent.has(ocrText);
-              })
-              .map((r) => ({
-                str: r.text,
-                x: r.bbox[0],
-                y: r.bbox[1],
-                width: r.bbox[2] - r.bbox[0],
-                height: r.bbox[3] - r.bbox[1],
-                w: r.bbox[2] - r.bbox[0],
-                h: r.bbox[3] - r.bbox[1],
-                fontName: "OCR",
-                fontSize: r.bbox[3] - r.bbox[1],
-              }));
+        // Run OCR
+        log(`  OCR on page ${page.pageNum}...`);
+        const ocrResults = await this.ocrEngine.recognize(tmpImagePath, {
+          language: this.config.ocrLanguage,
+          correctRotation: true,
+        });
 
-            // Add OCR text items directly to page textItems
-            page.textItems.push(...ocrTextItems);
-            log(`  Found ${ocrTextItems.length} text items from OCR on page ${page.pageNum}`);
-          }
+        // Convert OCR results to text items and add to page
+        if (ocrResults.length > 0) {
+          // Scale factor to convert from OCR pixels to PDF points
+          // OCR operates at config.dpi, PDF uses 72 points per inch (PDF spec constant)
+          const scaleFactor = 72 / this.config.dpi;
 
-          // Clean up temp file
-          await fs.unlink(tmpImagePath).catch(() => {});
-        } catch (error) {
-          log(`  OCR failed for page ${page.pageNum}: ${error}`);
+          // Helper to check if an OCR result overlaps with garbled regions
+          const overlapsGarbledRegion = (ocrBbox: number[]): boolean => {
+            if (!page.garbledTextRegions) return false;
+
+            const ocrX = ocrBbox[0] * scaleFactor;
+            const ocrY = ocrBbox[1] * scaleFactor;
+            const ocrW = (ocrBbox[2] - ocrBbox[0]) * scaleFactor;
+            const ocrH = (ocrBbox[3] - ocrBbox[1]) * scaleFactor;
+
+            // Check overlap with any garbled region (with some tolerance)
+            const tolerance = 5; // PDF points
+            for (const region of page.garbledTextRegions) {
+              const overlapX = ocrX < region.x + region.width + tolerance &&
+                               ocrX + ocrW > region.x - tolerance;
+              const overlapY = ocrY < region.y + region.height + tolerance &&
+                               ocrY + ocrH > region.y - tolerance;
+              if (overlapX && overlapY) {
+                return true;
+              }
+            }
+            return false;
+          };
+
+          // Helper to check if an OCR result spatially overlaps with existing PDF text
+          // This prevents duplicating text that PDF already extracted correctly
+          const overlapsExistingText = (ocrBbox: number[]): boolean => {
+            const ocrX = ocrBbox[0] * scaleFactor;
+            const ocrY = ocrBbox[1] * scaleFactor;
+            const ocrW = (ocrBbox[2] - ocrBbox[0]) * scaleFactor;
+            const ocrH = (ocrBbox[3] - ocrBbox[1]) * scaleFactor;
+
+            const tolerance = 2; // PDF points - tighter tolerance for existing text
+            for (const item of page.textItems) {
+              const itemRight = item.x + (item.width || item.w || 0);
+              const itemBottom = item.y + (item.height || item.h || 0);
+
+              const overlapX = ocrX < itemRight + tolerance &&
+                               ocrX + ocrW > item.x - tolerance;
+              const overlapY = ocrY < itemBottom + tolerance &&
+                               ocrY + ocrH > item.y - tolerance;
+
+              if (overlapX && overlapY) {
+                return true;
+              }
+            }
+            return false;
+          };
+
+          const ocrTextItems: TextItem[] = ocrResults
+            .filter((r) => r.confidence > 0.1) // Filter low confidence
+            .filter((r) => {
+              // For targeted OCR (garbled regions only), only include results that overlap
+              if (hasGarbledRegions && !needsFullOcr) {
+                return overlapsGarbledRegion(r.bbox);
+              }
+              // For full OCR, include all results
+              return true;
+            })
+            .filter((r) => {
+              // Skip OCR results that spatially overlap with existing PDF text
+              // This prevents duplicating text that PDF already extracted correctly
+              return !overlapsExistingText(r.bbox);
+            })
+            .map((r) => ({
+              str: r.text,
+              x: r.bbox[0] * scaleFactor,
+              y: r.bbox[1] * scaleFactor,
+              width: (r.bbox[2] - r.bbox[0]) * scaleFactor,
+              height: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+              w: (r.bbox[2] - r.bbox[0]) * scaleFactor,
+              h: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+              fontName: "OCR",
+              fontSize: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+            }));
+
+          // Add OCR text items directly to page textItems
+          page.textItems.push(...ocrTextItems);
+          log(`  Found ${ocrTextItems.length} text items from OCR on page ${page.pageNum}`);
         }
+
+        // Clean up temp file
+        await fs.unlink(tmpImagePath).catch(() => {});
+      } catch (error) {
+        log(`  OCR failed for page ${page.pageNum}: ${error}`);
       }
     }
   }
