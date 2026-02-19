@@ -13,6 +13,7 @@ const {
   mockTextItems,
   mockParsedPagesWithBoundingBoxes,
   mockParsedPagesWithBoundingBoxesOcr,
+  mockScreenshotResults,
 } = vi.hoisted(() => {
   const mockPdfConvertedResult = {
     pdfPath: "/tmp/converted.pdf",
@@ -289,6 +290,40 @@ const {
     ],
   };
 
+  const mockImageBuffer = Buffer.from(new Uint8Array([1, 2, 3, 4, 5]));
+  const mockScreenshotResults: ScreenshotResult[] = [
+    {
+      pageNum: 1,
+      width: 612,
+      height: 792,
+      imageBuffer: mockImageBuffer,
+    },
+    {
+      pageNum: 2,
+      width: 612,
+      height: 792,
+      imageBuffer: mockImageBuffer,
+    },
+    {
+      pageNum: 3,
+      width: 612,
+      height: 792,
+      imageBuffer: mockImageBuffer,
+    },
+    {
+      pageNum: 4,
+      width: 612,
+      height: 792,
+      imageBuffer: mockImageBuffer,
+    },
+    {
+      pageNum: 5,
+      width: 612,
+      height: 792,
+      imageBuffer: mockImageBuffer,
+    },
+  ];
+
   return {
     mockPdfConvertedResult,
     mockPdfDocument,
@@ -302,11 +337,12 @@ const {
     mockTextItems,
     mockParsedPagesWithBoundingBoxes,
     mockParsedPagesWithBoundingBoxesOcr,
+    mockScreenshotResults,
   };
 });
 
 import { LiteParse } from "./parser";
-import { LiteParseConfig } from "./types";
+import { LiteParseConfig, ScreenshotResult } from "./types";
 
 vi.mock("../conversion/convertToPdf.js", async () => {
   const actual = await vi.importActual<typeof import("../conversion/convertToPdf.js")>(
@@ -332,6 +368,7 @@ vi.mock("../engines/pdf/pdfjs.js", async () => {
 
         loadDocument = vi.fn().mockResolvedValue(mockPdfDocument);
         extractAllPages = vi.fn().mockResolvedValue(mockPages);
+        extractPage = vi.fn().mockResolvedValue(mockPages[0]);
         renderPageImage = vi.fn(async () => Buffer.from(new Uint8Array([1, 2, 3, 4, 5])));
         close = vi.fn(async () => {});
       }
@@ -404,6 +441,23 @@ vi.mock("../processing/bbox.js", async () => {
   return {
     ...actual,
     buildBoundingBoxes: vi.fn().mockReturnValue(mockBoundingBoxes),
+  };
+});
+
+vi.mock("../engines/pdf/pdfium-renderer.js", async () => {
+  const actual = await vi.importActual<typeof import("../engines/pdf/pdfium-renderer.js")>(
+    "../engines/pdf/pdfium-renderer.js"
+  );
+  return {
+    ...actual,
+    PdfiumRenderer: vi.fn(
+      class {
+        constructor() {}
+
+        renderPageToBuffer = vi.fn(async () => Buffer.from(new Uint8Array([1, 2, 3, 4, 5])));
+        close = vi.fn(async () => {});
+      }
+    ),
   };
 });
 
@@ -537,5 +591,26 @@ describe("Parse tests", () => {
         return typeof page.boundingBoxes != "undefined";
       }).length
     ).toBe(0);
+  });
+});
+
+describe("test screenshot", () => {
+  it("test screenshot with all pages", async () => {
+    const config: Partial<LiteParseConfig> = { ocrEnabled: false, outputFormat: "text" };
+    const liteparse = new LiteParse(config);
+    const results = await liteparse.screenshot("/tmp/test.docx");
+    expect(results.length).toBe(5);
+    expect(results).toStrictEqual(mockScreenshotResults);
+  });
+  it("test screenshot with selected pages", async () => {
+    const config: Partial<LiteParseConfig> = { ocrEnabled: false, outputFormat: "text" };
+    const liteparse = new LiteParse(config);
+    const results = await liteparse.screenshot("/tmp/test.docx", [1, 3, 4]);
+    expect(results.length).toBe(3);
+    expect(results).toStrictEqual([
+      mockScreenshotResults[0],
+      mockScreenshotResults[2],
+      mockScreenshotResults[3],
+    ]);
   });
 });
