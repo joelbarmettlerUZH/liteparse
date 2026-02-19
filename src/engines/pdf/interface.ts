@@ -15,6 +15,14 @@ export interface PdfDocument {
   metadata?: unknown;
 }
 
+/** Bounding box region */
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface PageData {
   pageNum: number;
   width: number;
@@ -22,6 +30,8 @@ export interface PageData {
   textItems: TextItem[];
   images: Image[];
   annotations?: Annotation[];
+  /** Bounding boxes of garbled text that was filtered out (for targeted OCR) */
+  garbledTextRegions?: BoundingBox[];
 }
 
 export interface Path {

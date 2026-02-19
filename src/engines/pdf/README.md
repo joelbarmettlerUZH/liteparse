@@ -49,6 +49,25 @@ Handles special PDF.js markers for problematic fonts:
 - Decodes `:->|>_<charCode>_<fontChar>_<|<-:` format
 - Handles pipe-separated characters: `|a| |b| |c|` → `abc`
 
+**Garbled Font Detection:**
+Some PDFs have fonts with corrupted or missing ToUnicode mappings, causing PDF.js to output characters mapped to unexpected Unicode code points. The `isGarbledFontOutput()` function detects this by identifying:
+
+| Pattern | Unicode Range | Indicator |
+|---------|---------------|-----------|
+| Private Use Area | U+E000-U+F8FF | Fonts map unmapped glyphs here |
+| Arabic + Latin Extended mix | U+0600-U+08FF + U+0100-U+1EFF | Script mixing in English text |
+| Rare scripts | Syriac, Thaana, NKo, Samaritan | U+0700-U+083F |
+| Specials | U+FFF0-U+FFFF | Replacement chars, invalid markers |
+| Box Drawing/Shapes | U+2500-U+25FF | Shouldn't appear in running text |
+
+When garbled text is detected:
+1. The text item is filtered out
+2. Its bounding box is saved to `PageData.garbledTextRegions`
+3. OCR runs on the page, but only OCR results overlapping these regions are used
+4. Spatial deduplication prevents OCR from overwriting good PDF text
+
+This allows targeted OCR replacement of only the corrupted text while preserving high-quality PDF text extraction elsewhere.
+
 **Design Decisions:**
 - **Stores PDF path**: Needed for PDFium rendering (pdfjs.ts:95)
 - **Filters off-page items**: Removes text with negative coords or beyond page bounds (pdfjs.ts:191-198)
