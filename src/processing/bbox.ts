@@ -7,6 +7,7 @@ import {
 } from "../core/types.js";
 import { PageData, Image } from "../engines/pdf/interface.js";
 import { parseImageOcrBlocks, OcrBlock } from "./ocrUtils.js";
+import { cleanOcrTableArtifacts } from "./textUtils.js";
 
 const OCR_CONFIDENCE_THRESHOLD = 0.1;
 
@@ -264,6 +265,14 @@ export function buildBbox(pageData: PageData, config: LiteParseConfig): Projecti
       for (const block of ocrData) {
         const confidenceRounded = Math.round(parseFloat(block.confidence.toString()) * 1000) / 1000;
 
+        // Clean OCR artifacts from table border misreads
+        const cleanedText = cleanOcrTableArtifacts(block.c);
+
+        // Skip if cleaning removed all content
+        if (cleanedText.length === 0) {
+          continue;
+        }
+
         const line: ProjectionTextBox = {
           fromOCR: true,
           x: block.x,
@@ -271,8 +280,8 @@ export function buildBbox(pageData: PageData, config: LiteParseConfig): Projecti
           w: block.w,
           h: block.h,
           r: image.originalOrientationAngle || 0,
-          str: block.c,
-          strLength: [...block.c].length,
+          str: cleanedText,
+          strLength: [...cleanedText].length,
           pageBbox: {
             x: block.x,
             y: block.y,
@@ -288,7 +297,7 @@ export function buildBbox(pageData: PageData, config: LiteParseConfig): Projecti
           w: block.rw,
           h: block.rh,
           confidence: confidenceRounded,
-          text: block.c,
+          text: cleanedText,
         });
       }
 

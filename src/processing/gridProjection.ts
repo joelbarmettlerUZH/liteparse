@@ -192,6 +192,12 @@ function extractAnchorsPointsFromLines(lines: ProjectionTextBox[][], page: PageD
     }
   }
 
+  // Group nearby anchors FIRST to merge items at similar positions
+  // This ensures deltaMin operates on combined groups, not isolated items
+  group(anchorLeft);
+  group(anchorRight);
+  group(anchorCenter);
+
   deltaMin(anchorRight, 0.1);
   deltaMin(anchorLeft, 0.2);
   deltaMin(anchorCenter, 0.05);
@@ -235,30 +241,39 @@ function extractAnchorsPointsFromLines(lines: ProjectionTextBox[][], page: PageD
   intercept(anchorCenter);
 
   function group(collection: Anchor) {
-    for (const anchor in collection) {
-      const anchorNum = parseFloat(anchor);
-      // merge right
-      if (
-        collection[anchorNum + 1] &&
-        collection[anchorNum + 1].length > collection[anchorNum].length
-      ) {
-        collection[anchorNum + 1].push(...collection[anchorNum]);
-        delete collection[anchorNum];
-      }
-      // merge left
-      else if (
-        collection[anchorNum - 1] &&
-        collection[anchorNum - 1].length > collection[anchorNum].length
-      ) {
-        collection[anchorNum - 1].push(...collection[anchorNum]);
-        delete collection[anchorNum];
+    // Sort anchors to process them in order
+    const sortedAnchors = Object.keys(collection)
+      .map((a) => parseFloat(a))
+      .sort((a, b) => a - b);
+
+    // Merge nearby anchors within a tolerance
+    // Use 2 units as tolerance - this catches columns that are close but not exactly aligned
+    const MERGE_TOLERANCE = 2;
+
+    for (let i = 0; i < sortedAnchors.length; i++) {
+      const anchor = sortedAnchors[i];
+      if (!(anchor in collection)) continue; // Already merged
+
+      // Look for nearby anchors to merge into this one or merge this into
+      for (let j = i + 1; j < sortedAnchors.length; j++) {
+        const nextAnchor = sortedAnchors[j];
+        if (!(nextAnchor in collection)) continue;
+
+        // Stop if we're beyond the tolerance
+        if (nextAnchor - anchor > MERGE_TOLERANCE) break;
+
+        // Merge the smaller anchor into the larger one
+        if (collection[nextAnchor].length > collection[anchor].length) {
+          collection[nextAnchor].push(...collection[anchor]);
+          delete collection[anchor];
+          break; // This anchor is gone, move to next
+        } else {
+          collection[anchor].push(...collection[nextAnchor]);
+          delete collection[nextAnchor];
+        }
       }
     }
   }
-
-  group(anchorLeft);
-  group(anchorRight);
-  group(anchorCenter);
 
   function anyAnchorSurvived(bbox: ProjectionTextBox) {
     return (
@@ -849,6 +864,17 @@ export function bboxToLine(
 
   // merge 'words'
   const mergeThreshold = 1;
+
+  // Pattern to detect standalone numeric values (financial table numbers)
+  // Matches: numbers with optional commas, decimal points, dollar signs, percentages, negatives
+  const numericPattern = /^[$]?-?[\d,]+\.?\d*%?$/;
+
+  function looksLikeTableNumber(str: string): boolean {
+    const trimmed = str.trim();
+    // Must be at least 2 chars to be a table number (avoid merging single digits)
+    return trimmed.length >= 2 && numericPattern.test(trimmed);
+  }
+
   for (const line of lines) {
     for (let i = 1; i < line.length; ++i) {
       // merge box in word if:
@@ -858,7 +884,11 @@ export function bboxToLine(
       const currentLine = line[i];
       const previousLine = line[i - 1];
       if (canMergeMarkup(previousLine, currentLine)) {
-        if (currentLine.x - previousLine.x - previousLine.w <= mergeThreshold) {
+        // Don't merge adjacent numbers in tables - they're separate columns
+        const bothAreNumbers =
+          looksLikeTableNumber(previousLine.str) && looksLikeTableNumber(currentLine.str);
+
+        if (!bothAreNumbers && currentLine.x - previousLine.x - previousLine.w <= mergeThreshold) {
           // if same word but less than .7 of prev line
           if (currentLine.h != 0 && currentLine.h < previousLine.h * 0.7) {
             // and not starting with space
@@ -878,11 +908,13 @@ export function bboxToLine(
           line.splice(i, 1);
           i--;
         } else if (
+          !bothAreNumbers &&
           currentLine.x - previousLine.x - previousLine.w <
-          previousLine.w / previousLine.strLength
+            previousLine.w / previousLine.strLength
         ) {
           // merge if space between this word and previous is less than average
           // character width (using previous word font size)
+          // But don't merge adjacent numbers - they're likely table columns
 
           // Now extend the width
           previousLine.w = currentLine.x + currentLine.w - previousLine.x;
@@ -978,11 +1010,22 @@ function updateForwardAnchorRightBound(
   anchorTarget: number
 ): void {
   // Anything snapped to the right of rightBound should be aligned to anchorTarget line length at minimum
+  // Also update nearby positions (within tolerance) to handle slight position variations between rows
+  const POSITION_TOLERANCE = 2;
+
   for (let i = snapMap.length - 1; i >= 0; --i) {
     const anchor = snapMap[i];
     if (rightBound <= anchor) {
       if (!forwardAnchor[anchor] || anchorTarget > forwardAnchor[anchor]) {
         forwardAnchor[anchor] = anchorTarget;
+      }
+      // Also update nearby positions within tolerance
+      for (let j = i - 1; j >= 0; --j) {
+        const nearbyAnchor = snapMap[j];
+        if (anchor - nearbyAnchor > POSITION_TOLERANCE) break;
+        if (!forwardAnchor[nearbyAnchor] || anchorTarget > forwardAnchor[nearbyAnchor]) {
+          forwardAnchor[nearbyAnchor] = anchorTarget;
+        }
       }
     } else {
       return;
@@ -1303,7 +1346,8 @@ export function projectToGrid(
 
           let lastSnapLeft = 0;
           for (const key in forwardAnchors.left) {
-            if (parseInt(key) <= bbox.x) {
+            // Use parseFloat to preserve decimal precision from anchor keys
+            if (parseFloat(key) <= bbox.x) {
               lastSnapLeft = Math.max(lastSnapLeft, forwardAnchors.left[key]);
             }
           }
