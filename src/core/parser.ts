@@ -11,6 +11,7 @@ import { projectPagesToGrid } from "../processing/grid.js";
 import { buildBoundingBoxes } from "../processing/bbox.js";
 import { formatJSON } from "../output/json.js";
 import { convertToPdf, cleanupConversionFiles } from "../conversion/convertToPdf.js";
+import { cleanOcrTableArtifacts } from "../processing/textUtils.js";
 
 export class LiteParse {
   private config: LiteParseConfig;
@@ -309,17 +310,22 @@ export class LiteParse {
             // This prevents duplicating text that PDF already extracted correctly
             return !overlapsExistingText(r.bbox);
           })
-          .map((r) => ({
-            str: r.text,
-            x: r.bbox[0] * scaleFactor,
-            y: r.bbox[1] * scaleFactor,
-            width: (r.bbox[2] - r.bbox[0]) * scaleFactor,
-            height: (r.bbox[3] - r.bbox[1]) * scaleFactor,
-            w: (r.bbox[2] - r.bbox[0]) * scaleFactor,
-            h: (r.bbox[3] - r.bbox[1]) * scaleFactor,
-            fontName: "OCR",
-            fontSize: (r.bbox[3] - r.bbox[1]) * scaleFactor,
-          }));
+          .map((r) => {
+            // Clean OCR artifacts from table border misreads
+            const cleanedText = cleanOcrTableArtifacts(r.text);
+            return {
+              str: cleanedText,
+              x: r.bbox[0] * scaleFactor,
+              y: r.bbox[1] * scaleFactor,
+              width: (r.bbox[2] - r.bbox[0]) * scaleFactor,
+              height: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+              w: (r.bbox[2] - r.bbox[0]) * scaleFactor,
+              h: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+              fontName: "OCR",
+              fontSize: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+            };
+          })
+          .filter((item) => item.str.length > 0); // Skip items that became empty after cleaning
 
         // Add OCR text items directly to page textItems
         page.textItems.push(...ocrTextItems);

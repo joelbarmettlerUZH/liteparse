@@ -1,4 +1,38 @@
 /**
+ * Clean common OCR artifacts from table documents.
+ * OCR often misreads vertical table border lines as bracket-like characters.
+ * This is especially common with numbers adjacent to table cell borders.
+ *
+ * Examples:
+ * - "44520]" → "44,520" (vertical line misread as ])
+ * - "|123" → "123" (vertical line misread as |)
+ * - "0.3|" → "0.3" (vertical line misread as |)
+ */
+export function cleanOcrTableArtifacts(text: string): string {
+  // Characters commonly misread from vertical table borders
+  // These typically appear at the start or end of cell content
+  const borderArtifacts = /^[|[\](){}]+|[|[\](){}]+$/g;
+
+  const cleaned = text.trim();
+
+  // Only clean if the core content looks like a number or short text
+  // This avoids incorrectly stripping brackets from actual content like "(note)"
+  const withoutArtifacts = cleaned.replace(borderArtifacts, "");
+
+  // If removing artifacts leaves us with something that looks like a number,
+  // statistical value, or percentage, use the cleaned version
+  if (withoutArtifacts.length > 0) {
+    // Check if core content is numeric-ish (numbers, commas, periods, asterisks, percent, minus, plus, Z, N/A)
+    const numericPattern = /^[*+-]?[\d,.\s]+[%]?$|^[*]?-?[\d,.\s]+$|^[ZN]\/A$|^[Z-]$/;
+    if (numericPattern.test(withoutArtifacts.trim())) {
+      return withoutArtifacts.trim();
+    }
+  }
+
+  return cleaned;
+}
+
+/**
  * Convert string to subscript unicode characters
  */
 export function strToSubscriptString(str: string): string {

@@ -93,6 +93,202 @@ const BUGGY_FONT_MARKER_CHECK = ":->|>";
 const PIPE_PATTERN_REGEX = /\s*\|([^|])\|\s*/g;
 
 /**
+ * Common tabular figures font encoding mappings.
+ * Many fonts with "Differences" arrays use similar patterns for tabular digits.
+ * These mappings are derived from common font encoding conventions.
+ *
+ * Note: The same PDF can use multiple fonts with DIFFERENT glyph-to-character mappings
+ * for the same glyph IDs. We try all mappings and pick the best match.
+ *
+ * Special glyphs:
+ * - 42: '*' (asterisk for significance markers)
+ * - 150: '-' (minus sign/dash)
+ */
+const TABULAR_FIGURES_MAPPINGS: Record<number, string>[] = [
+  // Mapping 1: Bold/header style (e.g., census PDF header row)
+  // Characters: 0123456789.,
+  {
+    17: "4",
+    18: "6",
+    19: "8",
+    20: "5",
+    21: "9",
+    22: "7",
+    23: "1",
+    24: " ",
+    25: ",",
+    26: "+",
+    27: "-",
+    28: "3",
+    29: "0",
+    30: "2",
+    31: ".",
+    42: "*",
+    150: "-",
+  },
+  // Mapping 2: Book/body style (e.g., census PDF detail rows)
+  // Note: Same glyph IDs but different character assignments!
+  {
+    17: "+",
+    18: "7",
+    19: "-",
+    20: "9",
+    21: "6",
+    22: "3",
+    23: "1",
+    24: " ",
+    25: "8",
+    26: "5",
+    27: "4",
+    28: "0",
+    29: "2",
+    30: ".",
+    31: ",",
+    42: "*",
+    150: "-",
+  },
+];
+
+/**
+ * Check if all glyphs in the range would produce printable ASCII via direct char code.
+ * Returns true if using String.fromCharCode on these glyphs would produce valid text.
+ */
+function canDecodeAsAscii(glyphs: number[]): boolean {
+  // Check if ALL glyphs would produce valid printable ASCII or common whitespace
+  for (const g of glyphs) {
+    // Printable ASCII range (space through tilde), plus tab/newline
+    if (!((g >= 32 && g <= 126) || g === 9 || g === 10 || g === 13)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Score a decoded string for how "number-like" it appears.
+ * Higher scores indicate better number formatting.
+ */
+function scoreNumberFormat(decoded: string): number {
+  let score = 0;
+
+  // Count digits - primary indicator of a number
+  const digitCount = (decoded.match(/[0-9]/g) || []).length;
+  score += digitCount * 2;
+
+  // Bonus for matching common number patterns
+  // Pattern: digits with optional commas for thousands
+  if (/^\d{1,3}(,\d{3})*$/.test(decoded)) {
+    score += 5; // e.g., "248,800"
+  }
+  // Pattern: decimal number
+  if (/^\d+\.\d+$/.test(decoded)) {
+    score += 5; // e.g., "10.5"
+  }
+  // Pattern: negative number
+  if (/^[*-]?\d/.test(decoded)) {
+    score += 2; // e.g., "-1,132" or "*-0.4"
+  }
+  // Pattern: percentage or simple number
+  if (/^\d+$/.test(decoded)) {
+    score += 3; // e.g., "897"
+  }
+
+  // Penalize bad patterns
+  // Consecutive punctuation marks (not valid in numbers)
+  if (/[.,]{2,}/.test(decoded)) {
+    score -= 10;
+  }
+  // Punctuation at start (except minus/asterisk) or end
+  if (/^[.,+]|[.,+]$/.test(decoded)) {
+    score -= 5;
+  }
+  // Comma followed by anything other than 3 digits then boundary
+  if (/,(?!\d{3}(?:[,.]|$))/.test(decoded)) {
+    score -= 3;
+  }
+  // Period not followed by digits (except at end)
+  if (/\.(?![0-9])/.test(decoded) && !decoded.endsWith(".")) {
+    score -= 3;
+  }
+
+  return score;
+}
+
+/**
+ * Try to decode buggy font markers using known tabular figures mappings.
+ * Returns the decoded string if a mapping produces valid-looking text,
+ * otherwise returns null to fall back to charCode decoding.
+ *
+ * Strategy:
+ * 1. If glyphs are in ASCII range (32-126), let the fallback handle it
+ * 2. If glyphs are in tabular range (17-31, plus special chars), try mappings
+ * 3. Score each result for how "number-like" it appears
+ * 4. Return the best result if it looks like a valid number
+ */
+function tryDecodeTabularFigures(str: string): string | null {
+  if (!str.includes(BUGGY_FONT_MARKER_CHECK)) return null;
+
+  // Extract all glyph IDs from the markers
+  const glyphs: number[] = [];
+  let match;
+  const regex = /:->\|>_(\d+)_\d+_<\|<-:/g;
+  while ((match = regex.exec(str)) !== null) {
+    glyphs.push(parseInt(match[1]));
+  }
+
+  if (glyphs.length === 0) return null;
+
+  // If these glyphs would decode fine as ASCII, don't use tabular mapping
+  if (canDecodeAsAscii(glyphs)) {
+    return null;
+  }
+
+  // Check if glyphs are in the tabular figures range
+  // Tabular figures typically use glyphs 17-31, plus special chars like 42, 150
+  const tabularRange = glyphs.every(
+    (g) =>
+      (g >= 17 && g <= 31) || // Core tabular figures
+      g === 42 || // Asterisk
+      g === 150 || // Minus
+      g === 8 ||
+      g === 9 ||
+      g === 10 // Some special chars
+  );
+
+  if (!tabularRange) {
+    // Mixed content - not pure tabular figures
+    return null;
+  }
+
+  // Try each mapping and pick the best result
+  let bestResult: string | null = null;
+  let bestScore = -Infinity;
+
+  for (const mapping of TABULAR_FIGURES_MAPPINGS) {
+    const decoded = glyphs.map((g) => mapping[g] || "").join("");
+
+    // Skip if there are unmapped glyphs
+    const unmapped = glyphs.filter((g) => !mapping[g]).length;
+    if (unmapped > 0) continue;
+
+    // Score based on how "number-like" the result looks
+    const score = scoreNumberFormat(decoded);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestResult = decoded;
+    }
+  }
+
+  // Only return if we got a reasonable score (at least some digits, proper format)
+  if (bestResult && bestScore > 0) {
+    return bestResult;
+  }
+
+  return null;
+}
+
+/**
  * Strip C0/C1 control characters from text (except common whitespace).
  * These can appear in PDF text due to font encoding issues but the
  * surrounding text may still be valid.
@@ -322,10 +518,17 @@ export class PdfJsEngine implements PdfEngine {
       // Format: :->|>_<charCode>_<fontChar>_<|<-:
       let decodedStr = item.str;
       if (decodedStr.includes(BUGGY_FONT_MARKER_CHECK)) {
-        BUGGY_FONT_MARKER_REGEX.lastIndex = 0; // Reset regex state
-        decodedStr = decodedStr.replace(BUGGY_FONT_MARKER_REGEX, (_: string, charCode: string) =>
-          String.fromCharCode(parseInt(charCode))
-        );
+        // Try tabular figures decoding first (common in government/census PDFs)
+        const tabularDecoded = tryDecodeTabularFigures(decodedStr);
+        if (tabularDecoded) {
+          decodedStr = tabularDecoded;
+        } else {
+          // Fall back to original approach: use glyph ID as character code
+          BUGGY_FONT_MARKER_REGEX.lastIndex = 0; // Reset regex state
+          decodedStr = decodedStr.replace(BUGGY_FONT_MARKER_REGEX, (_: string, charCode: string) =>
+            String.fromCharCode(parseInt(charCode))
+          );
+        }
       }
 
       // Handle pipe-separated characters: " |a|  |r|  |X| " -> "arX"
