@@ -69,30 +69,111 @@ function normalizeForComparison(text: string): string {
     .join("\n");
 }
 
-function computeTextDiff(expected: string, actual: string): string {
-  // Simple line-by-line diff
+interface DiffHunk {
+  startLine: number;
+  endLine: number;
+}
+
+function computeTextDiff(expected: string, actual: string, maxHunks = 5, contextLines = 1): string {
   const expectedLines = expected.split("\n");
   const actualLines = actual.split("\n");
-  const diff: string[] = [];
 
+  // Find all changed line indices
   const maxLines = Math.max(expectedLines.length, actualLines.length);
+  const changedIndices: number[] = [];
+
   for (let i = 0; i < maxLines; i++) {
     const exp = expectedLines[i] ?? "";
     const act = actualLines[i] ?? "";
-
     if (exp !== act) {
-      if (exp && !act) {
-        diff.push(`- ${exp}`);
-      } else if (!exp && act) {
-        diff.push(`+ ${act}`);
-      } else {
-        diff.push(`- ${exp}`);
-        diff.push(`+ ${act}`);
-      }
+      changedIndices.push(i);
     }
   }
 
-  return diff.slice(0, 20).join("\n") + (diff.length > 20 ? `\n... (${diff.length - 20} more)` : "");
+  if (changedIndices.length === 0) {
+    return "";
+  }
+
+  // Group consecutive changes into hunks (with context gap tolerance)
+  const hunks: DiffHunk[] = [];
+  let currentHunk: DiffHunk | null = null;
+
+  for (const idx of changedIndices) {
+    // Start new hunk if this change is far from the previous one
+    // (more than 2*contextLines apart, so hunks don't overlap)
+    if (!currentHunk || idx > currentHunk.endLine + 2 * contextLines + 1) {
+      if (currentHunk) {
+        hunks.push(currentHunk);
+      }
+      currentHunk = {
+        startLine: idx,
+        endLine: idx,
+      };
+    } else {
+      currentHunk.endLine = idx;
+    }
+  }
+  if (currentHunk) {
+    hunks.push(currentHunk);
+  }
+
+  // Build output for each hunk (limited to maxHunks)
+  const output: string[] = [];
+  const displayHunks = hunks.slice(0, maxHunks);
+
+  for (const hunk of displayHunks) {
+    // Expand hunk range to include context
+    const contextStart = Math.max(0, hunk.startLine - contextLines);
+    const contextEnd = Math.min(maxLines - 1, hunk.endLine + contextLines);
+
+    // Format hunk header
+    const lineRange = hunk.startLine === hunk.endLine
+      ? `line ${hunk.startLine + 1}`
+      : `lines ${hunk.startLine + 1}-${hunk.endLine + 1}`;
+    output.push(`@@ ${lineRange} @@`);
+
+    // Collect context before, removed lines, added lines, and context after
+    const contextBefore: string[] = [];
+    const removedLines: string[] = [];
+    const addedLines: string[] = [];
+    const contextAfter: string[] = [];
+
+    for (let i = contextStart; i <= contextEnd; i++) {
+      const exp = expectedLines[i] ?? "";
+      const act = actualLines[i] ?? "";
+      const isBeforeChanges = i < hunk.startLine;
+      const isAfterChanges = i > hunk.endLine;
+
+      if (exp === act) {
+        // Context line (unchanged)
+        if (isBeforeChanges) {
+          contextBefore.push(`  ${i + 1}: ${exp}`);
+        } else if (isAfterChanges) {
+          contextAfter.push(`  ${i + 1}: ${exp}`);
+        }
+      } else {
+        // Changed line - collect separately
+        if (exp) {
+          removedLines.push(`- ${i + 1}: ${exp}`);
+        }
+        if (act) {
+          addedLines.push(`+ ${i + 1}: ${act}`);
+        }
+      }
+    }
+
+    // Output: context before, then all removed, then all added, then context after
+    output.push(...contextBefore);
+    output.push(...removedLines);
+    output.push(...addedLines);
+    output.push(...contextAfter);
+  }
+
+  if (hunks.length > maxHunks) {
+    output.push(`\n... (${hunks.length - maxHunks} more change groups)`);
+  }
+
+  return output.join("\n");
 }
 
 async function getCurrentOutput(
