@@ -462,9 +462,15 @@ export class PdfJsEngine implements PdfEngine {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes("password") || message.includes("Password")) {
         if (password) {
-          throw new Error("Incorrect password for this PDF. Please check the password and try again.", { cause: error });
+          throw new Error(
+            "Incorrect password for this PDF. Please check the password and try again.",
+            { cause: error }
+          );
         } else {
-          throw new Error("This PDF is password-protected. Use --password <password> to provide the document password.", { cause: error });
+          throw new Error(
+            "This PDF is password-protected. Use --password <password> to provide the document password.",
+            { cause: error }
+          );
         }
       }
       throw error;
@@ -639,7 +645,12 @@ export class PdfJsEngine implements PdfEngine {
     return pages;
   }
 
-  async renderPageImage(_doc: PdfDocument, pageNum: number, dpi: number, password?: string): Promise<Buffer> {
+  async renderPageImage(
+    _doc: PdfDocument,
+    pageNum: number,
+    dpi: number,
+    password?: string
+  ): Promise<Buffer> {
     if (!this.pdfiumRenderer) {
       this.pdfiumRenderer = new PdfiumRenderer();
     }

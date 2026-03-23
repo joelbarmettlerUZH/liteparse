@@ -5,7 +5,12 @@ export interface PdfEngine {
   loadDocument(input: string | Uint8Array, password?: string): Promise<PdfDocument>;
   extractPage(doc: PdfDocument, pageNum: number): Promise<PageData>;
   extractAllPages(doc: PdfDocument, maxPages?: number, targetPages?: string): Promise<PageData[]>;
-  renderPageImage(doc: PdfDocument, pageNum: number, dpi: number, password?: string): Promise<Buffer>;
+  renderPageImage(
+    doc: PdfDocument,
+    pageNum: number,
+    dpi: number,
+    password?: string
+  ): Promise<Buffer>;
   close(doc: PdfDocument): Promise<void>;
 }
 

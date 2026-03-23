@@ -235,7 +235,11 @@ export async function findImageMagickCommand(): Promise<{
 /**
  * Convert office documents using LibreOffice
  */
-export async function convertOfficeDocument(filePath: string, outputDir: string, password?: string): Promise<string> {
+export async function convertOfficeDocument(
+  filePath: string,
+  outputDir: string,
+  password?: string
+): Promise<string> {
   const libreOfficeCmd = await findLibreOfficeCommand();
   if (!libreOfficeCmd) {
     throw new Error(

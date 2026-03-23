@@ -306,7 +306,10 @@ program
   .option("--no-precise-bbox", "Disable precise bounding boxes")
   .option("--recursive", "Recursively search input directory")
   .option("--extension <ext>", 'Only process files with this extension (e.g., ".pdf")')
-  .option("--password <password>", "Password for encrypted/protected documents (applied to all files)")
+  .option(
+    "--password <password>",
+    "Password for encrypted/protected documents (applied to all files)"
+  )
   .option("--config <file>", "Config file (JSON)")
   .option("-q, --quiet", "Suppress progress output")
   .action(async (inputDir: string, outputDir: string, options: BatchParseCommandOptions) => {

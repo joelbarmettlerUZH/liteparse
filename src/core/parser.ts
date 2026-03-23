@@ -236,7 +236,10 @@ export class LiteParse {
     log(`Generating screenshots for: ${typeof input === "string" ? input : "<buffer>"}`);
 
     // Load PDF document to get page count and dimensions
-    const doc = await this.pdfEngine.loadDocument(input as string | Uint8Array, this.config.password);
+    const doc = await this.pdfEngine.loadDocument(
+      input as string | Uint8Array,
+      this.config.password
+    );
     const totalPages = doc.numPages;
 
     // Determine the input to pass to the renderer (file path or buffer)
@@ -325,7 +328,12 @@ export class LiteParse {
 
     try {
       // Render page as image buffer
-      const imageBuffer = await this.pdfEngine.renderPageImage(doc, page.pageNum, this.config.dpi, this.config.password);
+      const imageBuffer = await this.pdfEngine.renderPageImage(
+        doc,
+        page.pageNum,
+        this.config.dpi,
+        this.config.password
+      );
 
       // Run OCR directly on the buffer (no temp file needed)
       log(`  OCR on page ${page.pageNum}...`);
