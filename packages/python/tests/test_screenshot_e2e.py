@@ -6,18 +6,19 @@ from pathlib import Path
 import pytest
 
 from liteparse import (
+    ImageFormat,
     LiteParse,
     ScreenshotBatchResult,
     ScreenshotResult,
-    ImageFormat,
-    ParseError,
 )
 
 
 class TestScreenshotBasic:
     """Basic screenshot functionality."""
 
-    def test_screenshot_returns_batch_result(self, parser: LiteParse, invoice_pdf: Path):
+    def test_screenshot_returns_batch_result(
+        self, parser: LiteParse, invoice_pdf: Path
+    ):
         result = parser.screenshot(invoice_pdf)
         assert isinstance(result, ScreenshotBatchResult)
 
@@ -52,6 +53,12 @@ class TestScreenshotBasic:
         result = parser.screenshot(invoice_pdf, image_format="jpg")
         for ss in result.screenshots:
             assert ss.image_path.endswith(".jpg")
+
+    @pytest.mark.asyncio
+    async def test_screensho_async_basic(self, parser: LiteParse, invoice_pdf: Path):
+        result = await parser.screenshot_async(invoice_pdf, image_format="png")
+        assert isinstance(result, ScreenshotBatchResult)
+        assert len(result.screenshots) > 0
 
 
 class TestScreenshotOptions:
