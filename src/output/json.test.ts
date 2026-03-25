@@ -79,6 +79,43 @@ const pages = [
   },
 ];
 
+// Native PDF text item (no OCR fields)
+const nativeTextItem = {
+  str: "Native text",
+  x: 10,
+  y: 20,
+  width: 100,
+  height: 15,
+  w: 100,
+  h: 15,
+  fontName: "Helvetica",
+  fontSize: 12,
+};
+
+// OCR text item (with OCR fields)
+const ocrTextItem = {
+  str: "OCR detected text",
+  x: 10,
+  y: 50,
+  width: 150,
+  height: 20,
+  w: 150,
+  h: 20,
+  fontName: "OCR",
+  fontSize: 20,
+  fromOCR: true,
+  confidence: 0.95,
+};
+
+const mixedPage = {
+  pageNum: 1,
+  width: 612,
+  height: 792,
+  text: "Native text\nOCR detected text",
+  textItems: [nativeTextItem, ocrTextItem],
+  boundingBoxes: [],
+};
+
 const pagesJSON = {
   pages: [
     {
@@ -139,5 +176,32 @@ describe("test json utilities", () => {
   it("test formatJSON", () => {
     const result = formatJSON(parseResult);
     expect(result).toBe(JSON.stringify(pagesJSON, null, 2));
+  });
+});
+
+describe("OCR confidence fields", () => {
+  it("includes fromOCR and confidence for OCR items", () => {
+    const result = buildJSON([mixedPage]);
+    const items = result.pages[0].textItems;
+    const ocrItem = items.find((i) => i.text === "OCR detected text");
+    expect(ocrItem?.fromOCR).toBe(true);
+    expect(ocrItem?.confidence).toBe(0.95);
+  });
+
+  it("omits fromOCR and confidence for native items", () => {
+    const result = buildJSON([mixedPage]);
+    const items = result.pages[0].textItems;
+    const nativeItem = items.find((i) => i.text === "Native text");
+    expect(nativeItem).not.toHaveProperty("fromOCR");
+    expect(nativeItem).not.toHaveProperty("confidence");
+  });
+
+  it("includes confidence of 0.0", () => {
+    const zeroConfidenceItem = { ...ocrTextItem, confidence: 0.0 };
+    const page = { ...mixedPage, textItems: [zeroConfidenceItem] };
+    const result = buildJSON([page]);
+    const item = result.pages[0].textItems[0];
+    expect(item.confidence).toBe(0.0);
+    expect(item.fromOCR).toBe(true);
   });
 });
