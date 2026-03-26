@@ -120,15 +120,11 @@ The Python package wraps the LiteParse CLI, so the Node.js CLI must be installed
 ### Installation
 
 ```bash
-# 1. Install the CLI (required)
-npm install -g @llamaindex/liteparse
-
-# 2. Install the Python package
 pip install liteparse
 ```
 
 <Aside type="caution">
-  The Python package calls the LiteParse CLI under the hood. Make sure `lit` is available on your PATH before using the Python library.
+  The Python package calls the LiteParse CLI under the hood: while the package can auto-install the CLI executable if not installed, it is recommended to do it separately (`npm install -g @llamaindex/liteparse` or `brew install run-llama/liteparse/llamaindex-liteparse`).
 </Aside>
 
 ### Parsing a document
