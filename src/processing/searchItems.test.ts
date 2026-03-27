@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { searchItems } from "./searchItems";
 import { JsonTextItem } from "../core/types";
 
-function item(text: string, x: number, y: number, width: number, height = 12, fontSize = 12): JsonTextItem {
+function item(
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height = 12,
+  fontSize = 12
+): JsonTextItem {
   return { text, x, y, width, height, fontSize };
 }
 
