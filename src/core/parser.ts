@@ -422,6 +422,7 @@ export class LiteParse {
               h: (r.bbox[3] - r.bbox[1]) * scaleFactor,
               fontName: "OCR",
               fontSize: (r.bbox[3] - r.bbox[1]) * scaleFactor,
+              confidence: Math.round(r.confidence * 1000) / 1000,
             };
           })
           .filter((item) => item.str.length > 0); // Skip items that became empty after cleaning

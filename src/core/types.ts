@@ -175,6 +175,8 @@ export interface TextItem {
   vgap?: boolean;
   /** @internal Whether this is a placeholder item used during layout. */
   isPlaceholder?: boolean;
+  /** Confidence score from 0.0 to 1.0. Native PDF text defaults to 1.0, OCR text reflects engine confidence. */
+  confidence?: number;
 }
 
 /**
@@ -304,6 +306,8 @@ export interface JsonTextItem {
   fontName?: string;
   /** Font size in PDF points. */
   fontSize?: number;
+  /** The OCR confidence (null if OCR wasn't used) */
+  confidence?: number;
 }
 
 /**
