@@ -219,10 +219,17 @@ export class LiteParse {
    * Uses PDFium for high-quality rendering. Each page is returned as a
    * {@link ScreenshotResult} with the raw image buffer and dimensions.
    *
-   * @param input - A file path, `Buffer`, or `Uint8Array` containing PDF bytes.
+   * Supports PDFs natively. Non-PDF formats (DOCX, XLSX, images, etc.) are automatically
+   * converted to PDF before rendering if the required system tools are installed.
+   * Text-based formats (TXT, CSV, etc.) cannot be screenshotted and will throw an error.
+   *
+   * @param input - A file path, `Buffer`, or `Uint8Array` containing document bytes.
    * @param pageNumbers - 1-indexed page numbers to screenshot. If omitted, all pages are rendered.
    * @param quiet - If `true`, suppresses progress logging to stderr.
    * @returns Array of screenshot results, one per rendered page.
+   *
+   * @throws Error if the input is a text-based format that cannot be rendered.
+   * @throws Error if the file cannot be found, converted, or rendered.
    */
   async screenshot(
     input: LiteParseInput,
@@ -235,20 +242,65 @@ export class LiteParse {
 
     log(`Generating screenshots for: ${typeof input === "string" ? input : "<buffer>"}`);
 
-    // Load PDF document to get page count and dimensions
-    const doc = await this.pdfEngine.loadDocument(
-      input as string | Uint8Array,
-      this.config.password
-    );
+    let doc: PdfDocument;
+    let pdfInput: string | Uint8Array;
+    let needsCleanup = false;
+    let cleanupPath: string | undefined;
+
+    if (typeof input === "string") {
+      const conversionResult = await convertToPdf(input, this.config.password);
+
+      if ("code" in conversionResult) {
+        throw new Error(`Conversion failed: ${conversionResult.message}`);
+      }
+
+      if ("content" in conversionResult) {
+        throw new Error(
+          `Cannot screenshot text-based format. Convert to PDF first.`
+        );
+      }
+
+      const pdfPath = conversionResult.pdfPath;
+      needsCleanup = pdfPath !== input;
+      if (needsCleanup) {
+        cleanupPath = pdfPath;
+        log(`Converted ${conversionResult.originalExtension} to PDF`);
+      }
+
+      doc = await this.pdfEngine.loadDocument(pdfPath, this.config.password);
+      pdfInput = pdfPath;
+    } else {
+      const ext = await guessExtensionFromBuffer(input);
+
+      if (ext === ".pdf") {
+        const data = input instanceof Uint8Array ? input : new Uint8Array(input);
+        doc = await this.pdfEngine.loadDocument(data, this.config.password);
+        pdfInput = data;
+      } else {
+        const conversionResult = await convertBufferToPdf(input, this.config.password);
+
+        if ("code" in conversionResult) {
+          throw new Error(`Conversion failed: ${conversionResult.message}`);
+        }
+
+        if ("content" in conversionResult) {
+          throw new Error(
+            `Cannot screenshot text-based format. Convert to PDF first.`
+          );
+        }
+
+        needsCleanup = true;
+        cleanupPath = conversionResult.pdfPath;
+        log(`Converted ${conversionResult.originalExtension} buffer to PDF`);
+        doc = await this.pdfEngine.loadDocument(conversionResult.pdfPath, this.config.password);
+        pdfInput = conversionResult.pdfPath;
+      }
+    }
+
     const totalPages = doc.numPages;
-
-    // Determine the input to pass to the renderer (file path or buffer)
-    const rendererInput: string | Buffer | Uint8Array = typeof input === "string" ? input : input;
-
     const results: ScreenshotResult[] = [];
     const pages = pageNumbers || Array.from({ length: totalPages }, (_, i) => i + 1);
 
-    // Initialize PDFium renderer
     const renderer = new PdfiumRenderer();
 
     try {
@@ -260,12 +312,11 @@ export class LiteParse {
 
         log(`Rendering page ${pageNum}...`);
         const imageBuffer = await renderer.renderPageToBuffer(
-          rendererInput,
+          pdfInput,
           pageNum,
           this.config.dpi
         );
 
-        // Get page dimensions
         const pageData = await this.pdfEngine.extractPage(doc, pageNum);
 
         results.push({
@@ -276,9 +327,12 @@ export class LiteParse {
         });
       }
     } finally {
-      // Clean up resources
       await renderer.close();
       await this.pdfEngine.close(doc);
+
+      if (needsCleanup && cleanupPath) {
+        await cleanupConversionFiles(cleanupPath);
+      }
     }
 
     log(`Generated ${results.length} screenshots`);
