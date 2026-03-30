@@ -1,5 +1,19 @@
 # @llamaindex/liteparse
 
+## 1.4.2
+
+### Patch Changes
+
+- [#91](https://github.com/run-llama/liteparse/pull/91) [`5bb3a3b`](https://github.com/run-llama/liteparse/commit/5bb3a3b214b148bec86aaf979ea561611a7df763) Thanks [@AdemBoukhris457](https://github.com/AdemBoukhris457)! - fix: use path.join for screenshot output filepath
+
+- [#97](https://github.com/run-llama/liteparse/pull/97) [`1100bdb`](https://github.com/run-llama/liteparse/commit/1100bdbcb7293abb63d3eb38ff295669618265e0) Thanks [@AdemBoukhris457](https://github.com/AdemBoukhris457)! - fix: return null from extension detection for unrecognizable formats
+
+- [#89](https://github.com/run-llama/liteparse/pull/89) [`71f6621`](https://github.com/run-llama/liteparse/commit/71f6621dd413195b3634b747c6cf7cde90966035) Thanks [@AdemBoukhris457](https://github.com/AdemBoukhris457)! - perf: cache PDFium document across page operations
+
+- [#99](https://github.com/run-llama/liteparse/pull/99) [`b7a3080`](https://github.com/run-llama/liteparse/commit/b7a3080d89dccc4fd3cec65f559d4ebeff12e9bc) Thanks [@Winds-AI](https://github.com/Winds-AI)! - fix: validate ImageMagick executables before using convert
+
+- [#95](https://github.com/run-llama/liteparse/pull/95) [`2718912`](https://github.com/run-llama/liteparse/commit/2718912b520ffc475d8e2541f5430b0823bd0acd) Thanks [@AdemBoukhris457](https://github.com/AdemBoukhris457)! - fix: guard indexOf before splice in grid anchor resolution
+
 ## 1.4.1
 
 ### Patch Changes
